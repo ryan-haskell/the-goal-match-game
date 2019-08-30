@@ -28,8 +28,8 @@ type alias Flags =
 type alias Model =
     { roll : Maybe Int
     , kid : Kid
-    , matches : Matches
-    , scores : Scores
+    , matchesInBowl : MatchesInBowl
+    , matchesMoved : MatchesMoved
     }
 
 
@@ -41,15 +41,6 @@ type Kid
     | Evan
 
 
-type alias Scores =
-    { andy : List Float
-    , ben : List Float
-    , chuck : List Float
-    , dave : List Float
-    , evan : List Float
-    }
-
-
 type alias KidMap a b =
     { a
         | andy : b
@@ -58,17 +49,6 @@ type alias KidMap a b =
         , dave : b
         , evan : b
     }
-
-
-initScores : Scores
-initScores =
-    { andy = []
-    , ben = []
-    , chuck = []
-    , dave = []
-    , evan = []
-    }
-
 
 nextKid : Kid -> Kid
 nextKid kid =
@@ -88,13 +68,26 @@ nextKid kid =
         Evan ->
             Andy
 
-
-scoreFor : Kid -> Scores -> List Float
-scoreFor kid scores =
-    accessorFor kid scores
+-- MatchesMovedThisTurn
 
 
-type alias Matches =
+type alias MatchesMoved =
+    { andy : List Int
+    , ben : List Int
+    , chuck : List Int
+    , dave : List Int
+    , evan : List Int
+    }
+
+
+matchesMovedFor : Kid -> MatchesMoved -> List Int
+matchesMovedFor = accessorFor
+
+
+-- MatchesInBowl
+
+
+type alias MatchesInBowl =
     { andy : Int
     , ben : Int
     , chuck : Int
@@ -103,41 +96,18 @@ type alias Matches =
     }
 
 
-initMatches : Matches
-initMatches =
-    { andy = 10000
-    , ben = 0
-    , chuck = 0
-    , dave = 0
-    , evan = 0
-    }
-
-
-matchesAvailableFor : Kid -> Matches -> Int
-matchesAvailableFor kid matches =
-    case kid of
-        Andy ->
-            matches.andy
-
-        Ben ->
-            matches.ben
-
-        Chuck ->
-            matches.chuck
-
-        Dave ->
-            matches.dave
-
-        Evan ->
-            matches.evan
+matchesInBowlFor : Kid -> MatchesInBowl -> Int
+matchesInBowlFor = accessorFor
 
 
 nameFor : Kid -> String
 nameFor kid =
     dataFor kid |> .name
 
+type alias Accessor a b =
+    KidMap a b -> b
 
-accessorFor : Kid -> KidMap a b -> b
+accessorFor : Kid -> Accessor a b
 accessorFor kid =
     dataFor kid |> .accessor
 
@@ -148,7 +118,7 @@ dataFor :
         { name : String
         , color : Color
         , shape : Dots.Shape
-        , accessor : KidMap a b -> b
+        , accessor : Accessor a b
         }
 dataFor kid =
     case kid of
@@ -201,8 +171,20 @@ init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( { roll = Nothing
       , kid = Andy
-      , matches = initMatches
-      , scores = initScores
+      , matchesInBowl =
+           { andy = 10000
+           , ben = 0
+           , chuck = 0
+           , dave = 0
+           , evan = 0
+           }
+      , matchesMoved =
+           { andy = []
+           , ben = []
+           , chuck = []
+           , dave = []
+           , evan = []
+           }
       }
     , Cmd.none
     )
@@ -223,89 +205,89 @@ update msg model =
 
         HandleRoll roll ->
             let
-                { scores, matches } =
-                    updateScores
-                        { kid = model.kid
-                        , roll = roll
-                        , matches = model.matches
-                        , scores = model.scores
+                { matchesMoved, matchesInBowl } =
+                    updateMatches
+                        { roll = roll
+                        , model = model
                         }
             in
             ( { model
                 | roll = Just roll
                 , kid = nextKid model.kid
-                , scores = scores
-                , matches = matches
+                , matchesMoved = matchesMoved
+                , matchesInBowl = matchesInBowl
               }
             , Cmd.none
             )
 
 
-updateScores : { kid : Kid, roll : Int, matches : Matches, scores : Scores } -> { scores : Scores, matches : Matches }
-updateScores { kid, roll, matches, scores } =
+updateMatches :
+    { roll : Int, model : Model }
+    -> { matchesMoved : MatchesMoved, matchesInBowl : MatchesInBowl }
+updateMatches { roll, model } =
     let
+        kid =
+            model.kid
         matchesMoved =
-            if roll > matchesAvailableFor kid matches then
-                matchesAvailableFor kid matches
+            model.matchesMoved
+        matchesMovedForKid =
+            matchesMovedFor kid matchesMoved
+        matchesInBowl =
+            model.matchesInBowl
+        matchesInBowlForKid =
+            matchesInBowlFor kid matchesInBowl
+        matchesMovedThisTurn =
+            if roll > matchesInBowlForKid then
+                matchesInBowlForKid
 
             else
                 roll
 
-        kidScores =
-            scoreFor kid scores
-
-        score : Float
-        score =
-            kidScores
-                |> List.drop (List.length kidScores - 1)
-                |> List.head
-                |> Maybe.withDefault 0
-                |> (\lastScore -> lastScore + toFloat matchesMoved - 3.5)
     in
-    { scores =
+    { matchesMoved =
         case kid of
             Andy ->
-                { scores | andy = kidScores ++ [ score ] }
+                { matchesMoved | andy = matchesMovedForKid ++ [ matchesMovedThisTurn ] }
 
             Ben ->
-                { scores | ben = kidScores ++ [ score ] }
+                { matchesMoved | ben = matchesMovedForKid ++ [ matchesMovedThisTurn ] }
 
             Chuck ->
-                { scores | chuck = kidScores ++ [ score ] }
+                { matchesMoved | chuck = matchesMovedForKid ++ [ matchesMovedThisTurn ] }
 
             Dave ->
-                { scores | dave = kidScores ++ [ score ] }
+                { matchesMoved | dave = matchesMovedForKid ++ [ matchesMovedThisTurn ] }
 
             Evan ->
-                { scores | evan = kidScores ++ [ score ] }
-    , matches =
+                { matchesMoved | evan = matchesMovedForKid ++ [ matchesMovedThisTurn ] }
+    , matchesInBowl =
         case kid of
             Andy ->
-                { matches
-                    | andy = matchesAvailableFor Andy matches - matchesMoved
-                    , ben = matchesAvailableFor Ben matches + matchesMoved
+                { matchesInBowl
+                    | andy = matchesInBowlFor Andy matchesInBowl - matchesMovedThisTurn
+                    , ben = matchesInBowlFor Ben matchesInBowl + matchesMovedThisTurn
                 }
 
             Ben ->
-                { matches
-                    | ben = matchesAvailableFor Ben matches - matchesMoved
-                    , chuck = matchesAvailableFor Chuck matches + matchesMoved
+                { matchesInBowl
+                    | ben = matchesInBowlFor Ben matchesInBowl - matchesMovedThisTurn
+                    , chuck = matchesInBowlFor Chuck matchesInBowl + matchesMovedThisTurn
                 }
 
             Chuck ->
-                { matches
-                    | chuck = matchesAvailableFor Chuck matches - matchesMoved
-                    , dave = matchesAvailableFor Dave matches + matchesMoved
+                { matchesInBowl
+                    | chuck = matchesInBowlFor Chuck matchesInBowl - matchesMovedThisTurn
+                    , dave = matchesInBowlFor Dave matchesInBowl + matchesMovedThisTurn
                 }
 
             Dave ->
-                { matches
-                    | dave = matchesAvailableFor Dave matches - matchesMoved
-                    , evan = matchesAvailableFor Evan matches + matchesMoved
+                { matchesInBowl
+                    | dave = matchesInBowlFor Dave matchesInBowl - matchesMovedThisTurn
+                    , evan = matchesInBowlFor Evan matchesInBowl + matchesMovedThisTurn
                 }
 
             Evan ->
-                { matches | evan = matchesAvailableFor Evan matches - matchesMoved }
+                { matchesInBowl | evan = matchesInBowlFor Evan matchesInBowl - matchesMovedThisTurn }
     }
 
 
@@ -336,8 +318,21 @@ lineBoy model kid =
         color
         shape
         name
-        (List.indexedMap (\i s -> Point (toFloat (i + 1)) s) (accessor model.scores))
+        (List.indexedMap (\i s -> Point (toFloat (i + 1)) s) (scores accessor model))
 
+
+scores : (Accessor MatchesMoved (List Int)) -> Model -> List Float
+scores accessor model =
+    model.matchesMoved -- MatchesMoved
+    |> accessor -- List Int
+    |> List.map (\i -> toFloat i - 3.5) -- List Float
+    |> List.foldl scoreReducer (0, []) -- (Float, List Float)
+    |> Tuple.second
+
+
+scoreReducer : Float -> (Float, List Float) -> (Float, List Float)
+scoreReducer scoreThisTurn (cumulativeScore, scores_) =
+    (cumulativeScore + scoreThisTurn, scores_ ++ [cumulativeScore + scoreThisTurn])
 
 type alias Point =
     { roll : Float
@@ -361,7 +356,7 @@ viewBulletPoint model kid =
         , style "color" weight
         ]
         [ text (nameFor kid)
-        , text <| " (" ++ String.fromInt (matchesAvailableFor kid model.matches) ++ " matches)"
+        , text <| " (" ++ String.fromInt (matchesInBowlFor kid model.matchesInBowl) ++ " matches)"
         ]
 
 
